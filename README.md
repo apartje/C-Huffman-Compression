@@ -1,5 +1,5 @@
 # C++-Huffman-Compression
-C++ huffman memory compresssion/decompression minimal implementation
+C++20 huffman memory compresssion/decompression minimal implementation
 
 fast and easy to implement
 
