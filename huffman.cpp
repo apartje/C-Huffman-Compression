@@ -7,6 +7,7 @@
 #include <map>
 #include <vector>
 #include <algorithm>
+#include <chrono>
 
 
 class c_huffman
@@ -32,15 +33,19 @@ public:
 private:
 	std::vector<uint8_t> m_buffer;
 
-	t_node* create_tree(const std::vector<t_key_pair>& arg_keypair, std::map<uint8_t, t_node*>& arg_translate)
+	t_node* create_tree(uint32_t* arg_keypair, t_node** arg_translate)
 	{
 		std::vector<t_node*> queue;
 
-		for (const auto x : arg_keypair)
+		for (auto x = 0; x < (0xff + 1); x++)
 		{
+			const auto freq = arg_keypair[x];
+			if (freq == 0)
+				continue;
+
 			auto node = new t_node();
-			node->m_value = x.m_value;
-			node->m_freq = x.m_freq;
+			node->m_value = x;
+			node->m_freq = freq;
 			node->m_parent = nullptr;
 
 			arg_translate[node->m_value] = node;
@@ -60,7 +65,7 @@ private:
 			const auto right = queue.back(); queue.pop_back();
 
 			left->m_parent = next_node;
-		    right->m_parent = next_node;
+			right->m_parent = next_node;
 
 			next_node->m_node[0] = left;
 			next_node->m_node[1] = right;
@@ -95,7 +100,7 @@ private:
 		}
 	}
 
-	void compress_bit(uint32_t& arg_index, const t_node* arg_node)
+	void compress_bit(uint64_t& arg_index, const t_node* arg_node)
 	{
 		while (true)
 		{
@@ -104,7 +109,7 @@ private:
 				break;
 			}
 
-			const uint32_t old_index = arg_index;
+			const uint64_t old_index = arg_index;
 			arg_index++;
 
 			//should not happen
@@ -137,36 +142,36 @@ private:
 public:
 	c_huffman() = default;
 
-	bool create_key_pair(const uint8_t* arg_data, const uint32_t arg_size, std::vector<t_key_pair> &arg_out)
+	bool create_key_pair(const uint8_t* arg_data, const uint32_t arg_size, uint32_t* arg_out)
 	{
 		if (arg_size == 0)
 			return false;
 
-		std::map<uint8_t, uint32_t> key_map;
+		memset((void*)arg_out, 0, (0xff + 1) * 4);
 		for (auto x = 0; x < arg_size; x++)
-			key_map[arg_data[x]]++;
-
-		for (const auto& x : key_map)
-			arg_out.emplace_back(x.first, x.second);
+		{
+			arg_out[arg_data[x]]++;
+		}
 
 		return true;
 	}
 
-	bool compress(const uint8_t* arg_data, const uint32_t arg_size, std::vector<t_key_pair>& arg_keypair, std::vector<uint8_t>& arg_out)
+	bool compress(const uint8_t* arg_data, const uint32_t arg_size, uint32_t* arg_keypair, std::vector<uint8_t>& arg_out)
 	{
 		if (arg_size == 0)
 			return false;
-	
-		std::map<uint8_t, t_node*> leaf_map;
+
+		t_node* leaf_map[0xff + 1];
 		const auto tree = create_tree(arg_keypair, leaf_map);
 
 		m_buffer.resize(std::max(static_cast<uint32_t>(100), arg_size));
-		uint32_t index = 0;
 		const uint32_t pos = arg_size - 1;
 
+		//temp fix for integer overflow on bigger array sizes
+		uint64_t index = 0;
 		for (uint32_t x = 0; x < arg_size; ++x)
 		{
-			auto val = arg_data[pos - x];
+			const auto val = arg_data[pos - x];
 			compress_bit(index, leaf_map[val]);
 		}
 
@@ -176,7 +181,7 @@ public:
 
 		//push bit count to buffer
 		const auto base = reinterpret_cast<uint8_t*>(&index);
-		for (int i = 0; i < 4; i++) {
+		for (int i = 0; i < 8; i++) {
 			arg_out.push_back(base[i]);
 		}
 
@@ -190,22 +195,22 @@ public:
 	}
 
 
-	bool decompress(uint8_t* arg_data, uint32_t arg_size, const std::vector<t_key_pair>& arg_keypair, std::vector<uint8_t>& arg_out)
+	bool decompress(uint8_t* arg_data, uint32_t arg_size, uint32_t* arg_keypair, std::vector<uint8_t>& arg_out)
 	{
 		if (arg_size == 0)
 			return false;
 
-		std::map<uint8_t, t_node*> leaf_map;
+		t_node* leaf_map[0xff + 1];
 		const auto tree = create_tree(arg_keypair, leaf_map);
 
 		arg_out.reserve(arg_size);
 
 		auto temp_node = tree;
 
-		const uint32_t bit_count = *reinterpret_cast<uint32_t*>(reinterpret_cast<uintptr_t>(&arg_data[arg_size - 4]));
+		const uint64_t bit_count = *reinterpret_cast<uint64_t*>(reinterpret_cast<uintptr_t>(&arg_data[arg_size - 8]));
 
-		const uint32_t pos = bit_count - 1;
-		for (uint32_t i = 0; i < bit_count; i++) {
+		const uint64_t pos = bit_count - 1;
+		for (uint64_t i = 0; i < bit_count; i++) {
 			const auto v = pos - i;
 			if (decompress_bit(&temp_node, !(arg_data[v / 8] >> v % 8 & 0x1), arg_out))
 			{
