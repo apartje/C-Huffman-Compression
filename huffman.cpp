@@ -226,33 +226,47 @@ public:
 
 };
 
+const int size = (1024 * 1024 * 1024) * 1;
+
+
+#include <Windows.h>
 int main()
 {
+	char* data = nullptr;
+	data = (char*)VirtualAlloc(0, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+
+	for (auto x = 0; x < size; ++x)
+		data[x] = x % 0xff;
+
 	std::cout << "Huffman Compression: \n";
 
-	std::string var_test = "test was los xd test lol was hallo ich war mal in einem china gestunken hat voll grkass viel mehr als ich wollte tastaur baum maus";
-	var_test = var_test + var_test + var_test + var_test + var_test + var_test;
-
-
 	//setup
-	std::vector<c_huffman::t_key_pair> key_pair;
 	c_huffman huffman;
-	huffman.create_key_pair(reinterpret_cast<uint8_t*>(var_test.data()), var_test.size(), key_pair);
+
+	uint32_t key_pair[0xff + 1];
+	huffman.create_key_pair((uint8_t*)data, size, key_pair);
+
 
 	//compress
 	std::vector<uint8_t> compressed_data;
-	huffman.compress(reinterpret_cast<uint8_t*>(var_test.data()), var_test.size(), key_pair, compressed_data);
+	huffman.compress((uint8_t*)data, size, key_pair, compressed_data);
 
+	auto t1 = std::chrono::high_resolution_clock::now();
 	//decompress
 	std::vector<uint8_t> uncoompressed_data;
 	huffman.decompress(compressed_data.data(), compressed_data.size(), key_pair, uncoompressed_data);
 
-	std::cout << "Orig Size:" << var_test.size() << "\n";
+
+	auto t2 = std::chrono::high_resolution_clock::now();
+	std::cout << duration_cast<std::chrono::milliseconds>(t2 - t1).count() << " ms speed\n";
+
+
+	std::cout << "Orig Size:" << size << "\n";
 	std::cout << "Compressed Size:" << compressed_data.size() << "\n";
 	std::cout << "Restored Size:" << uncoompressed_data.size() << "\n";
 
-	std::cout << "Data:" << "\n";
-	std::cout << std::string_view(reinterpret_cast<char*>(uncoompressed_data.data()), uncoompressed_data.size()) << "\n";
+	//std::cout << "Data:" << "\n";
+	//std::cout << std::string_view(reinterpret_cast<char*>(uncoompressed_data.data()), uncoompressed_data.size()) << "\n";
 
 	std::cin.get();
 }
